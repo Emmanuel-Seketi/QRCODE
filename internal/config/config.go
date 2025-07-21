@@ -28,12 +28,14 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
+	Type     string // "sqlite" or "postgres"
 	Host     string
 	Port     string
 	Name     string
 	User     string
 	Password string
 	SSLMode  string
+	Path     string // For SQLite
 }
 
 type JWTConfig struct {
@@ -87,12 +89,14 @@ func LoadConfig() (*Config, error) {
 			Environment: getEnv("ENVIRONMENT", "development"),
 		},
 		Database: DatabaseConfig{
+			Type:     getEnv("DB_TYPE", "sqlite"),
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),
 			Name:     getEnv("DB_NAME", "qr_platform"),
 			User:     getEnv("DB_USER", "postgres"),
 			Password: getEnv("DB_PASSWORD", ""),
 			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
+			Path:     getEnv("DB_PATH", "./data/qr_platform.db"),
 		},
 		JWT: JWTConfig{
 			Secret: getEnv("JWT_SECRET", "your_jwt_secret_here"),

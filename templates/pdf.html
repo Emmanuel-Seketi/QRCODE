@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{.Title}}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root { 
+      --primary1: #0c768a; 
+      --primary2: #0C8096; 
+      --primary3: #26666F; 
+      --bg1: #ffffff; 
+      --bg2: #fbfbfb; 
+      --bg3: #eef2f5; 
+      --text1: #424242; 
+      --text2: #000000; 
+      --border1: #d2d2d2; 
+      --border2: #d9d9d9; 
+    }
+    body { 
+      background: var(--bg3); 
+      color: var(--text1); 
+      font-family: 'Segoe UI', Arial, sans-serif; 
+      margin: 0; 
+      padding: 0; 
+      min-height: 100vh; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+    }
+    .container { 
+      background: var(--bg1); 
+      border-radius: 16px; 
+      box-shadow: 0 4px 24px rgba(38, 102, 111, 0.08); 
+      padding: 2.5rem 1.5rem 2rem 1.5rem; 
+      max-width: 400px; 
+      width: 100%; 
+      border: 1px solid var(--border2); 
+      text-align: center; 
+    }
+    h2 { 
+      color: var(--primary1); 
+      margin-bottom: 0.5rem; 
+      font-size: 1.6rem; 
+      font-weight: 700; 
+    }
+    .info-box { 
+      background: var(--bg2); 
+      border: 1px solid var(--border1); 
+      border-radius: 10px; 
+      padding: 1rem; 
+      margin: 1.2rem 0 1.5rem 0; 
+      text-align: left; 
+      font-size: 1.05rem; 
+      word-break: break-all; 
+    }
+    .info-box label { 
+      color: var(--primary3); 
+      font-weight: 600; 
+      margin-right: 0.5em; 
+    }
+    .icon { 
+      font-size: 3rem; 
+      color: var(--primary1); 
+      margin-bottom: 1rem; 
+    }
+    .btn, .btn-primary, .btn-secondary { 
+      display: block; 
+      width: 100%; 
+      background: linear-gradient(90deg, var(--primary1), var(--primary2)); 
+      color: var(--bg1); 
+      font-size: 1.15rem; 
+      font-weight: 600; 
+      border: none; 
+      border-radius: 8px; 
+      padding: 0.85rem 0; 
+      margin-bottom: 1rem; 
+      cursor: pointer; 
+      transition: background 0.2s; 
+      text-decoration: none; 
+      text-align: center;
+    }
+    .btn:hover, .btn:focus, .btn-primary:hover, .btn-primary:focus { 
+      background: var(--primary3); 
+      color: var(--bg1); 
+    }
+    .btn-secondary { 
+      background: linear-gradient(90deg, var(--primary3), var(--primary2)); 
+    }
+    .btn-secondary:hover, .btn-secondary:focus { 
+      background: var(--primary1); 
+      color: var(--bg1); 
+    }
+    .note { 
+      font-size: 0.98rem; 
+      color: var(--text1); 
+      background: var(--bg3); 
+      border-radius: 6px; 
+      padding: 0.7em 1em; 
+      border: 1px solid var(--border1); 
+      margin-top: 0.5em; 
+    }
+    @media (max-width: 480px) { 
+      .container { 
+        padding: 1.2rem 0.5rem 1.2rem 0.5rem; 
+        max-width: 98vw; 
+      } 
+      h2 { 
+        font-size: 1.2rem; 
+      } 
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📄</div>
+    <h2>PDF Document</h2>
+    <div class="info-box">
+      <div><label>File:</label> <span>{{.Filename}}</span></div>
+      <div><label>Type:</label> <span>PDF Document</span></div>
+    </div>
+    <a class="btn btn-primary" href="{{.FileURL}}" target="_blank">View PDF</a>
+    <a class="btn btn-secondary" href="{{.FileURL}}" download="{{.Filename}}">Download PDF</a>
+    <div class="note">
+      <b>Tip:</b> Click "View PDF" to open in your browser or "Download PDF" to save to your device.
+    </div>
+  </div>
+</body>
+</html>

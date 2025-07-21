@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
 	"qr_backend/internal/config"
 	"qr_backend/internal/database"
@@ -11,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors" // Add this import
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/template/html/v2"
 )
 
 func main() {
@@ -32,9 +35,20 @@ func main() {
 		}
 	}()
 
-	// Create Fiber app with configuration
+	// Initialize the template engine with absolute path for robustness
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Fatal("Failed to get current working directory:", err)
+	}
+	engine := html.New(filepath.Join(cwd, "templates"), ".html")
+	if err := engine.Load(); err != nil {
+		log.Fatal("Failed to load templates:", err)
+	}
+
+	// Create Fiber app with configuration and template engine
 	app := fiber.New(fiber.Config{
 		AppName: "QR Code Management Platform",
+		Views:   engine,
 	})
 
 	// Add Fiber logger middleware
@@ -43,12 +57,13 @@ func main() {
 		TimeFormat: "2006-01-02 15:04:05",
 		TimeZone:   "Local",
 	}))
-	// Add CORS middleware - ADD THIS SECTION
+
+	// Add CORS middleware with proper configuration
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:5173, http://127.0.0.1:5173", // Your frontend URLs
+		AllowOrigins:     "http://localhost:5173,http://127.0.0.1:5173,http://192.168.198.78:5173",
 		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
 		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
-		AllowCredentials: true,
+		AllowCredentials: false,
 	}))
 
 	// Setup routes

@@ -13,6 +13,7 @@ func SetupRoutes(app *fiber.App) {
 	qr := api.Group("/qr")
 	qr.Get("/", handler.ListQRCodes)                     // List QR codes with pagination
 	qr.Post("/", handler.CreateQRCode)                   // Create a new QR code
+	qr.Post("/pdf", handler.CreatePDFQRCode)             // Create PDF QR code with file upload
 	qr.Get("/:id", handler.GetQRCode)                    // Get a QR code by ID
 	qr.Put("/:id", handler.UpdateQRCode)                 // Update a QR code
 	qr.Delete("/:id", handler.DeleteQRCode)              // Delete a QR code
