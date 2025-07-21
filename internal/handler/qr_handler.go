@@ -640,6 +640,21 @@ func ScanQRCode(c *fiber.Ctx) error {
 		return c.Render("pdf", data)
 	}
 
+	// Image QR code landing page
+	if qr.Content["type"] == "image" || (qr.Content["url"] != nil && (strings.HasSuffix(strings.ToLower(qr.Content["url"].(string)), ".jpg") || strings.HasSuffix(strings.ToLower(qr.Content["url"].(string)), ".jpeg") || strings.HasSuffix(strings.ToLower(qr.Content["url"].(string)), ".png") || strings.HasSuffix(strings.ToLower(qr.Content["url"].(string)), ".gif"))) {
+		fileURL, _ := qr.Content["url"].(string)
+		filename := "image"
+		if storedFilename, ok := qr.Content["filename"].(string); ok && storedFilename != "" {
+			filename = storedFilename
+		}
+		data := fiber.Map{
+			"FileURL":  fileURL,
+			"Filename": filename,
+			"Title":    "Image File",
+		}
+		return c.Render("image", data)
+	}
+
 	// fallback for other dynamic types
 	if url, ok := qr.Content["url"].(string); ok {
 		return c.Status(fiber.StatusOK).Type("text/plain").SendString(url)
@@ -841,7 +856,7 @@ func CreatePDFQRCode(c *fiber.Ctx) error {
 	}
 
 	// Create the PDF URL (accessible via your server)
-	pdfURL := fmt.Sprintf("http://localhost:3000/uploads/%s", filename)
+	pdfURL := fmt.Sprintf("/uploads/%s", filename)
 
 	// Create QR code content
 	content := map[string]interface{}{
@@ -891,6 +906,85 @@ func CreatePDFQRCode(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(response)
+}
+
+// CreateImageQRCode handles image file upload and creates a QR code for it
+func CreateImageQRCode(c *fiber.Ctx) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "No file uploaded"})
+	}
+
+	// Validate file type
+	allowedTypes := map[string]bool{
+		"image/jpeg": true,
+		"image/png":  true,
+		"image/gif":  true,
+	}
+	contentType := file.Header.Get("Content-Type")
+	if !allowedTypes[contentType] {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "File type not allowed"})
+	}
+
+	// Save file
+	uploadsDir := "uploads"
+	os.MkdirAll(uploadsDir, 0755)
+	filename := fmt.Sprintf("%d_%s", time.Now().Unix(), file.Filename)
+	filePath := filepath.Join(uploadsDir, filename)
+	if err := c.SaveFile(file, filePath); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
+	}
+
+	// Create file reference in DB
+	fileRef, err := database.DB.FileReference.Create().
+		SetFilename(file.Filename).
+		SetURL(fmt.Sprintf("/uploads/%s", filename)).
+		SetSize(file.Size).
+		SetType(contentType).
+		Save(context.Background())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file reference"})
+	}
+
+	// Generate short URL for dynamic QR
+	shortURL, err := shorturl.Generate()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate short URL"})
+	}
+
+	// Create QR code content
+	imageURL := fmt.Sprintf("/uploads/%s", filename)
+	content := map[string]interface{}{
+		"type":        "image",
+		"url":         imageURL,
+		"filename":    file.Filename,
+		"file_ref_id": fileRef.ID,
+	}
+
+	// Create QR code in DB
+	qr, err := database.DB.QRCode.Create().
+		SetType("image").
+		SetTitle("Image QR Code - " + file.Filename).
+		SetContent(content).
+		SetShortURL(shortURL).
+		SetAnalytics(true).
+		SetActive(true).
+		AddFileRefs(fileRef).
+		Save(context.Background())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create image QR code"})
+	}
+
+	scanURL := fmt.Sprintf("http://localhost:3000/scan/%s", shortURL)
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"qr_code":        qr,
+		"file_reference": fileRef,
+		"image_url":      imageURL,
+		"short_url":      shortURL,
+		"scan_url":       scanURL,
+		"message":        "Image QR code created successfully",
+	})
 }
 
 // GetQRCodeAnalytics retrieves analytics for a QR code
