@@ -15,6 +15,7 @@ func SetupRoutes(app *fiber.App) {
 	qr.Post("/", handler.CreateQRCode)                   // Create a new QR code
 	qr.Post("/pdf", handler.CreatePDFQRCode)             // Create PDF QR code with file upload
 	qr.Post("/image", handler.CreateImageQRCode)         // Create Image QR code with file upload
+	qr.Post("/barcode", handler.CreateBarcodeQRCode)     // Create Data Matrix barcode QR code
 	qr.Get("/:id", handler.GetQRCode)                    // Get a QR code by ID
 	qr.Put("/:id", handler.UpdateQRCode)                 // Update a QR code
 	qr.Delete("/:id", handler.DeleteQRCode)              // Delete a QR code

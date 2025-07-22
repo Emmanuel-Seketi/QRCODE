@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"html/template"
+
 	"fmt"
 	"net/url"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"qr_backend/ent/qrcodeanalytics"
 	"qr_backend/internal/database"
 	"qr_backend/internal/model"
+	"qr_backend/pkg/barcode"
 	qrgen "qr_backend/pkg/qrcode"
 	"qr_backend/pkg/shorturl"
 
@@ -594,6 +597,30 @@ func ScanQRCode(c *fiber.Ctx) error {
 		phone, _ := qr.Content["phone"].(string)
 		emailAddr, _ := qr.Content["email"].(string)
 		address, _ := qr.Content["address"].(string)
+
+		// Generate vCard content
+		vcard := "BEGIN:VCARD\nVERSION:3.0\n"
+		vcard += "FN:" + name + "\n"
+		if organization != "" {
+			vcard += "ORG:" + organization + "\n"
+		}
+		if title != "" {
+			vcard += "TITLE:" + title + "\n"
+		}
+		if phone != "" {
+			vcard += "TEL:" + phone + "\n"
+		}
+		if emailAddr != "" {
+			vcard += "EMAIL:" + emailAddr + "\n"
+		}
+		if address != "" {
+			vcard += "ADR:" + address + "\n"
+		}
+		vcard += "END:VCARD"
+
+		// Create data URL for vCard download with template.URL to mark as safe
+		vcardURL := template.URL("data:text/x-vcard;charset=utf-8," + url.QueryEscape(vcard))
+
 		data := fiber.Map{
 			"Name":         name,
 			"Organization": organization,
@@ -602,6 +629,7 @@ func ScanQRCode(c *fiber.Ctx) error {
 			"Email":        emailAddr,
 			"Address":      address,
 			"TitlePage":    "Save Contact",
+			"VCardURL":     vcardURL,
 		}
 		return c.Render("vcard", data)
 	}
@@ -612,6 +640,44 @@ func ScanQRCode(c *fiber.Ctx) error {
 		end, _ := qr.Content["end_date"].(string)
 		location, _ := qr.Content["location"].(string)
 		description, _ := qr.Content["description"].(string)
+
+		// Generate iCal content with proper date formatting
+		ical := "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//QR Platform//Event//EN\n"
+		ical += "BEGIN:VEVENT\n"
+		ical += "SUMMARY:" + eventName + "\n"
+
+		// Format dates for iCal (remove hyphens and add time)
+		startFormatted := strings.ReplaceAll(strings.ReplaceAll(start, "-", ""), ":", "")
+		endFormatted := strings.ReplaceAll(strings.ReplaceAll(end, "-", ""), ":", "")
+
+		// If dates don't include time, add default times
+		if len(startFormatted) == 8 {
+			startFormatted += "T090000Z"
+		} else if !strings.Contains(startFormatted, "T") {
+			startFormatted += "T090000Z"
+		}
+
+		if len(endFormatted) == 8 {
+			endFormatted += "T170000Z"
+		} else if !strings.Contains(endFormatted, "T") {
+			endFormatted += "T170000Z"
+		}
+
+		ical += "DTSTART:" + startFormatted + "\n"
+		ical += "DTEND:" + endFormatted + "\n"
+
+		if location != "" {
+			ical += "LOCATION:" + location + "\n"
+		}
+		if description != "" {
+			ical += "DESCRIPTION:" + description + "\n"
+		}
+		ical += "END:VEVENT\n"
+		ical += "END:VCALENDAR"
+
+		// Create data URL for iCal download with template.URL to mark as safe
+		icalURL := template.URL("data:text/calendar;charset=utf-8," + url.QueryEscape(ical))
+
 		data := fiber.Map{
 			"Event":       eventName,
 			"Start":       start,
@@ -619,6 +685,7 @@ func ScanQRCode(c *fiber.Ctx) error {
 			"Location":    location,
 			"Description": description,
 			"Title":       "Add Event",
+			"ICalURL":     icalURL,
 		}
 		return c.Render("event", data)
 	}
@@ -653,6 +720,31 @@ func ScanQRCode(c *fiber.Ctx) error {
 			"Title":    "Image File",
 		}
 		return c.Render("image", data)
+	}
+
+	// Data Matrix Barcode QR code landing page
+	if qr.Content["type"] == "barcode_2d" || qr.Content["data"] != nil {
+		textData, _ := qr.Content["data"].(string)
+		if textData == "" {
+			textData = "No data available"
+		}
+
+		// Get the file URL from content
+		fileURL, _ := qr.Content["url"].(string)
+		filename := "datamatrix_barcode.png"
+		if storedFilename, ok := qr.Content["filename"].(string); ok && storedFilename != "" {
+			filename = storedFilename
+		}
+
+		data := fiber.Map{
+			"TextData":    textData,
+			"BarcodeType": "Data Matrix",
+			"Size":        "200x200",
+			"FileURL":     fileURL,
+			"Filename":    filename,
+			"Title":       "Data Matrix Barcode",
+		}
+		return c.Render("barcode", data)
 	}
 
 	// fallback for other dynamic types
@@ -985,6 +1077,140 @@ func CreateImageQRCode(c *fiber.Ctx) error {
 		"scan_url":       scanURL,
 		"message":        "Image QR code created successfully",
 	})
+}
+
+// CreateBarcodeQRCode handles creating a QR code for Data Matrix barcodes
+func CreateBarcodeQRCode(c *fiber.Ctx) error {
+	var req struct {
+		Title       string `json:"title"`
+		Description string `json:"description,omitempty"`
+		Data        string `json:"data"`
+		IsDynamic   bool   `json:"is_dynamic"`
+		Analytics   bool   `json:"analytics"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
+	}
+
+	if req.Data == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Data is required for barcode generation"})
+	}
+
+	if req.Title == "" {
+		req.Title = "Data Matrix Barcode"
+	}
+
+	// Generate the barcode image
+	barcodeData, err := barcode.GenerateDataMatrix(barcode.DataMatrixOptions{
+		Data: req.Data,
+		Size: "auto",
+	})
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to generate barcode: " + err.Error(),
+		})
+	}
+
+	// Ensure uploads directory exists
+	uploadsDir := "uploads"
+	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create uploads directory: " + err.Error(),
+		})
+	}
+
+	// Create unique filename
+	filename := fmt.Sprintf("%d_datamatrix_barcode.png", time.Now().Unix())
+	filePath := filepath.Join(uploadsDir, filename)
+
+	// Save barcode file
+	if err := os.WriteFile(filePath, barcodeData, 0644); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to save barcode file: " + err.Error(),
+		})
+	}
+
+	// Create file reference in database
+	fileRef, err := database.DB.FileReference.Create().
+		SetFilename("datamatrix_barcode.png").
+		SetURL(fmt.Sprintf("/uploads/%s", filename)).
+		SetSize(int64(len(barcodeData))).
+		SetType("image/png").
+		Save(context.Background())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to save file reference: " + err.Error(),
+		})
+	}
+
+	// Generate short URL for analytics/dynamic QR
+	var shortURL string
+	var qrType string
+
+	if req.IsDynamic {
+		qrType = "dynamic"
+		req.Analytics = true
+	} else {
+		qrType = "static"
+	}
+
+	if req.Analytics || req.IsDynamic {
+		shortURL, err = shorturl.Generate()
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to generate short URL: " + err.Error(),
+			})
+		}
+	}
+
+	// Create QR code content
+	barcodeURL := fmt.Sprintf("/uploads/%s", filename)
+	content := map[string]interface{}{
+		"type":        "barcode_2d",
+		"data":        req.Data,
+		"url":         barcodeURL,
+		"filename":    "datamatrix_barcode.png",
+		"file_ref_id": fileRef.ID,
+	}
+
+	// Create QR code in database
+	qrBuilder := database.DB.QRCode.Create().
+		SetType(qrType).
+		SetTitle(req.Title).
+		SetContent(content).
+		SetAnalytics(req.Analytics).
+		SetActive(true).
+		AddFileRefs(fileRef)
+
+	if req.Description != "" {
+		qrBuilder.SetDescription(req.Description)
+	}
+	if shortURL != "" {
+		qrBuilder.SetShortURL(shortURL)
+	}
+
+	qr, err := qrBuilder.Save(context.Background())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create QR code: " + err.Error(),
+		})
+	}
+
+	// Build response
+	response := fiber.Map{
+		"qr_code":        qr,
+		"file_reference": fileRef,
+		"barcode_url":    barcodeURL,
+		"message":        "Data Matrix barcode QR code created successfully",
+	}
+
+	if shortURL != "" {
+		response["short_url"] = shortURL
+		response["scan_url"] = fmt.Sprintf("http://localhost:3000/scan/%s", shortURL)
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(response)
 }
 
 // GetQRCodeAnalytics retrieves analytics for a QR code

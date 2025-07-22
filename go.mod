@@ -6,6 +6,7 @@ toolchain go1.24.4
 
 require (
 	entgo.io/ent v0.14.4
+	github.com/boombuler/barcode v1.0.2
 	github.com/gofiber/fiber/v2 v2.52.9
 	github.com/gofiber/template/html/v2 v2.1.3
 	github.com/joho/godotenv v1.5.1
