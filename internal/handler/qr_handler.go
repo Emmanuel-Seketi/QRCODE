@@ -361,7 +361,13 @@ func DownloadQRCode(c *fiber.Ctx) error {
 	var dataToEncode string
 	if qr.Type == "static" {
 		// Encode the info directly for static QR codes
-		if eventName, ok := qr.Content["name"].(string); ok && qr.Content["date"] != nil && qr.Content["end_date"] != nil {
+		if text, ok := qr.Content["text"].(string); ok {
+			// Plain text content for static text QR codes
+			dataToEncode = text
+		} else if urlStr, ok := qr.Content["url"].(string); ok {
+			// Website URL for static website QR codes
+			dataToEncode = urlStr
+		} else if eventName, ok := qr.Content["name"].(string); ok && qr.Content["date"] != nil && qr.Content["end_date"] != nil {
 			// iCalendar (VEVENT) support for static event QR codes
 			start, _ := qr.Content["date"].(string)
 			end, _ := qr.Content["end_date"].(string)
@@ -447,22 +453,22 @@ func DownloadQRCode(c *fiber.Ctx) error {
 			dataToEncode = vcard
 		} else {
 			// fallback for other static types
-			if url, ok := qr.Content["url"].(string); ok {
-				dataToEncode = url
+			if urlStr, ok := qr.Content["url"].(string); ok {
+				dataToEncode = urlStr
 			} else {
 				dataToEncode = fmt.Sprintf("%s/qr/%d", c.BaseURL(), qr.ID)
 			}
 		}
-	} else if qr.Type == "dynamic" && qr.ShortURL != "" {
-		// For dynamic QR codes, encode only the short URL
+	} else if (qr.Type == "dynamic" || qr.Type == "app" || qr.Type == "business") && qr.ShortURL != "" {
+		// For dynamic QR codes (including app and business), encode only the short URL
 		dataToEncode = fmt.Sprintf("%s/scan/%s", c.BaseURL(), qr.ShortURL)
 	} else if qr.RedirectURL != "" {
 		dataToEncode = qr.RedirectURL
 	} else if qr.ShortURL != "" {
 		dataToEncode = fmt.Sprintf("%s/scan/%s", c.BaseURL(), qr.ShortURL)
 	} else {
-		if url, ok := qr.Content["url"].(string); ok {
-			dataToEncode = url
+		if urlStr, ok := qr.Content["url"].(string); ok {
+			dataToEncode = urlStr
 		} else {
 			dataToEncode = fmt.Sprintf("%s/qr/%d", c.BaseURL(), qr.ID)
 		}
@@ -518,8 +524,8 @@ func ScanQRCode(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "QR code has expired"})
 	}
 
-	// Track analytics only for dynamic QR codes
-	if qr.Analytics && qr.Type == "dynamic" {
+	// Track analytics for all QR codes that have analytics enabled
+	if qr.Analytics {
 		ipAddress := c.IP()
 		userAgent := c.Get("User-Agent")
 		go func(id int, ip, ua string) {
@@ -535,6 +541,51 @@ func ScanQRCode(c *fiber.Ctx) error {
 					Save(goCtx)
 			}
 		}(qr.ID, ipAddress, userAgent)
+	}
+
+	// App QR code landing page
+	if qr.Type == "app" {
+		appStoreURL, _ := qr.Content["app_store_url"].(string)
+		deepLink, _ := qr.Content["deep_link"].(string)
+		appName, _ := qr.Content["name"].(string)
+		if appName == "" {
+			appName = "Mobile App"
+		}
+		
+		data := fiber.Map{
+			"AppName":     appName,
+			"AppStoreURL": appStoreURL,
+			"DeepLink":    deepLink,
+			"Title":       "Download App",
+		}
+		return c.Render("app", data)
+	}
+
+	// Business QR code landing page
+	if qr.Type == "business" {
+		businessName, _ := qr.Content["name"].(string)
+		tagline, _ := qr.Content["tagline"].(string)
+		website, _ := qr.Content["website"].(string)
+		description, _ := qr.Content["description"].(string)
+		logoURL, _ := qr.Content["logo_url"].(string)
+		contactInfo, _ := qr.Content["contact_info"].(map[string]interface{})
+		socialLinks, _ := qr.Content["social_links"].(map[string]interface{})
+		
+		if businessName == "" {
+			businessName = "Business"
+		}
+		
+		data := fiber.Map{
+			"BusinessName": businessName,
+			"Tagline":      tagline,
+			"Website":      website,
+			"Description":  description,
+			"LogoURL":      logoURL,
+			"ContactInfo":  contactInfo,
+			"SocialLinks":  socialLinks,
+			"Title":        businessName,
+		}
+		return c.Render("business", data)
 	}
 
 	// WiFi QR code landing page
@@ -747,9 +798,21 @@ func ScanQRCode(c *fiber.Ctx) error {
 		return c.Render("barcode", data)
 	}
 
+	// Handle dynamic website QR codes with proper redirection
+	if qr.Type == "dynamic" {
+		// Check if there's a redirect URL set
+		if qr.RedirectURL != "" {
+			return c.Redirect(qr.RedirectURL, fiber.StatusFound)
+		}
+		// Fallback to content URL for dynamic QR codes
+		if urlStr, ok := qr.Content["url"].(string); ok {
+			return c.Redirect(urlStr, fiber.StatusFound)
+		}
+	}
+
 	// fallback for other dynamic types
-	if url, ok := qr.Content["url"].(string); ok {
-		return c.Status(fiber.StatusOK).Type("text/plain").SendString(url)
+	if urlStr, ok := qr.Content["url"].(string); ok {
+		return c.Redirect(urlStr, fiber.StatusFound)
 	} else {
 		return c.Status(fiber.StatusOK).JSON(qr.Content)
 	}
